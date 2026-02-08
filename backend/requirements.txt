@@ -1,0 +1,31 @@
+# JobPulse API - Dépendances Python
+# =================================
+# Django : Framework web principal
+django>=4.2,<5.0
+
+# Django REST Framework : Pour créer des APIs REST professionnelles
+djangorestframework>=3.14,<4.0
+
+# django-filter : Filtrage avancé des querysets dans l'API
+django-filter>=23.0,<24.0
+
+# JWT : Authentification par token pour l'API
+djangorestframework-simplejwt>=5.3,<6.0
+
+# Celery : Pour exécuter des tâches asynchrones en arrière-plan
+celery>=5.3,<6.0
+
+# Redis : Client Python pour Redis (utilisé par Celery comme broker)
+redis>=5.0,<6.0
+
+# django-redis : Backend de cache Django utilisant Redis
+django-redis>=5.4,<6.0
+
+# psycopg2-binary : Driver PostgreSQL pour Django (base de données)
+psycopg2-binary>=2.9,<3.0
+
+# Gunicorn : Serveur WSGI de production (pour servir Django en production)
+gunicorn>=21.0,<22.0
+
+# drf-spectacular : Documentation API OpenAPI 3.0 / Swagger
+drf-spectacular>=0.27,<1.0
