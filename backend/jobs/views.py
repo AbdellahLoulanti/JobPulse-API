@@ -5,15 +5,20 @@ jobs/views.py - Vues API
 - JobOfferViewSet : CRUD complet (Create, Read, Update, Delete) pour les offres
 - TrendingJobsView : Liste des jobs "tendances" avec cache 15 min (Étape 6)
 """
-from rest_framework import viewsets
-from rest_framework.views import APIView
+from rest_framework import viewsets, generics
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 
-from .models import JobOffer, Company, Application
-from .serializers import JobOfferSerializer, CompanySerializer, ApplicationSerializer
+from .models import JobOffer, Company, Application, CandidateProfile
+from .serializers import (
+    JobOfferSerializer,
+    CompanySerializer,
+    ApplicationSerializer,
+    CandidateProfileSerializer,
+)
 from .filters import JobOfferFilter
 
 
@@ -48,13 +53,16 @@ class CompanyViewSet(viewsets.ModelViewSet):
     """
     CRUD pour les entreprises.
     GET /api/companies/ - Liste
-    POST /api/companies/ - Créer (authentifié)
+    POST /api/companies/ - Créer (authentifié, owner = user connecté)
     """
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     search_fields = ["name", "sector", "description"]
     ordering_fields = ["name", "created_at"]
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -77,15 +85,40 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-class TrendingJobsView(APIView):
+class ProfileViewSet(viewsets.GenericViewSet):
     """
-    Vue des offres "tendances" (les plus récentes).
+    Profil candidat : CV, lettre de motivation, compétences.
+    GET /api/profiles/me/ → Mon profil
+    PUT /api/profiles/me/ → Mettre à jour mon profil
+    """
+    serializer_class = CandidateProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def _get_profile(self):
+        profile, _ = CandidateProfile.objects.get_or_create(user=self.request.user)
+        return profile
+
+    @action(detail=False, methods=["get", "put", "patch"])
+    def me(self, request):
+        profile = self._get_profile()
+        if request.method == "GET":
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        serializer = self.get_serializer(profile, data=request.data, partial=(request.method == "PATCH"))
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data)
+
+
+class TrendingJobsView(generics.GenericAPIView):
+    """
+    Vue des offres "tendances" (les 10 plus récentes).
     Mise en cache 15 minutes pour réduire la charge sur la DB.
     """
-    # Cache : 15 min = 60 * 15 = 900 secondes
-    # Décorateur appliqué à la méthode get
+    serializer_class = JobOfferSerializer
+
     @method_decorator(cache_page(60 * 15))
     def get(self, request):
-        jobs = JobOffer.objects.all()[:10]  # Les 10 plus récentes
-        serializer = JobOfferSerializer(jobs, many=True)
+        jobs = JobOffer.objects.select_related("company").all()[:10]
+        serializer = self.get_serializer(jobs, many=True)
         return Response(serializer.data)

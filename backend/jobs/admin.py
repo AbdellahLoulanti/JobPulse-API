@@ -1,6 +1,17 @@
 """Admin Django pour les offres d'emploi et entreprises"""
 from django.contrib import admin
-from .models import JobOffer, Company, Application
+from .models import JobOffer, Company, Application, CandidateProfile, UserProfile
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ["user", "role"]
+
+
+@admin.register(CandidateProfile)
+class CandidateProfileAdmin(admin.ModelAdmin):
+    list_display = ["user", "full_name", "phone", "created_at"]
+    search_fields = ["user__username", "full_name", "skills"]
 
 
 @admin.register(Company)
