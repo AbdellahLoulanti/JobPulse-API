@@ -1,0 +1,12 @@
+# Angular
+/dist
+/node_modules
+.angular/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

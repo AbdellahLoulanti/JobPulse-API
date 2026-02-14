@@ -43,10 +43,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: jobpulse_backend
+    working_dir: /app
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             gunicorn --bind 0.0.0.0:8000 core.wsgi:application"
+             gunicorn --bind 0.0.0.0:8000 --timeout 120 core.wsgi:application"
     volumes:
       - ./backend:/app
       - static_volume:/app/staticfiles
@@ -72,6 +73,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: jobpulse_worker
+    working_dir: /app
     command: celery -A core worker -l info
     # Même code que backend, mais exécute Celery au lieu de Django
     volumes:
