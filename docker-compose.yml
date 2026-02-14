@@ -1,0 +1,109 @@
+# JobPulse API - Architecture Multi-container
+# ===========================================
+# Chaque "service" = un conteneur qui tourne en parallèle
+# Les services communiquent via le réseau Docker par défaut
+
+services:
+  # ---- BASE DE DONNÉES ----
+  db:
+    image: postgres:15-alpine
+    # Alpine = image légère (~50MB vs ~300MB pour postgres:15)
+    container_name: jobpulse_db
+    environment:
+      POSTGRES_DB: jobpulse
+      POSTGRES_USER: jobpulse
+      POSTGRES_PASSWORD: jobpulse_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Santé : vérifie que PostgreSQL accepte les connexions
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobpulse -d jobpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  # ---- REDIS (Broker Celery + Cache) ----
+  redis:
+    image: redis:7-alpine
+    container_name: jobpulse_redis
+    # Redis utilise le port 6379 par défaut
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- BACKEND DJANGO ----
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobpulse_backend
+    working_dir: /app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 --timeout 120 core.wsgi:application"
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    environment:
+      - DEBUG=0
+      - SECRET_KEY=django-insecure-change-in-production
+      - POSTGRES_HOST=db
+      - DATABASE_URL=postgres://jobpulse:jobpulse_secret@db:5432/jobpulse
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # ---- CELERY WORKER ----
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobpulse_worker
+    working_dir: /app
+    command: celery -A core worker -l info
+    # Même code que backend, mais exécute Celery au lieu de Django
+    volumes:
+      - ./backend:/app
+    environment:
+      - DEBUG=0
+      - SECRET_KEY=django-insecure-change-in-production
+      - POSTGRES_HOST=db
+      - DATABASE_URL=postgres://jobpulse:jobpulse_secret@db:5432/jobpulse
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    depends_on:
+      - backend
+      - redis
+
+  # ---- NGINX (Reverse Proxy) ----
+  nginx:
+    image: nginx:alpine
+    container_name: jobpulse_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+    depends_on:
+      - backend
+
+# Volumes persistants (les données survivent aux redémarrages)
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
